@@ -22,3 +22,9 @@ export const updateConversationSchema = z.object({
 });
 
 export type UpdateConversationRequest = z.infer<typeof updateConversationSchema>;
+
+export const updateModeSchema = z.object({
+  mode: z.enum(['text', 'voice']),
+});
+
+export type UpdateModeRequest = z.infer<typeof updateModeSchema>;

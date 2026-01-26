@@ -10,6 +10,8 @@ import { searchRoutes } from './modules/search/search.routes.js';
 import { contextRoutes } from './modules/context/context.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { audioRoutes } from './modules/audio/audio.routes.js';
+import { chatRoutes } from './modules/chat/index.js';
+import { ttsRoutes } from './modules/tts/index.js';
 
 type Variables = {
   requestId: string;
@@ -40,6 +42,8 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/search', searchRoutes);
   api.route('/context', contextRoutes);
   api.route('/audio', audioRoutes);
+  api.route('/chat', chatRoutes);
+  api.route('/tts', ttsRoutes);
 
   app.route('/api/v1', api);
 

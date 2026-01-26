@@ -1,11 +1,21 @@
 export type SenderType = 'USER' | 'AGENT';
+export type InputType = 'text' | 'voice' | 'system';
+export type ConversationMode = 'text' | 'voice';
+
+export interface VoiceMetadataDto {
+  transcriptionConfidence: number;
+  audioDuration: number;
+  audioUrl: string | null;
+}
 
 export interface MessageDto {
   id: string;
   conversationId: string;
   sender: SenderType;
+  inputType: InputType;
   content: string;
   maskedContent: string | null;
+  voiceMetadata: VoiceMetadataDto | null;
   sentiment: number | null;
   createdAt: Date;
 }
@@ -14,6 +24,8 @@ export interface ConversationDto {
   id: string;
   userId: string;
   contextSummary: string | null;
+  mode: ConversationMode;
+  lastModeSwitch: Date | null;
   startedAt: Date;
   endedAt: Date | null;
   messageCount?: number;

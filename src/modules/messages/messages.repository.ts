@@ -56,7 +56,7 @@ export async function getMessagesByConversationId(
 
 export async function updateMessage(
   id: string,
-  data: Partial<Pick<Message, 'maskedContent' | 'sentiment' | 'contentSearch'>>
+  data: Partial<Pick<Message, 'maskedContent' | 'sentiment' | 'contentSearch' | 'voiceMetadata'>>
 ): Promise<Message | null> {
   const [message] = await db.update(messages).set(data).where(eq(messages.id, id)).returning();
 

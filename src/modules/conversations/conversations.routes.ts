@@ -6,6 +6,7 @@ import {
   createConversationSchema,
   getConversationsQuerySchema,
   updateConversationSchema,
+  updateModeSchema,
 } from './conversations.schemas.js';
 import type { PaginatedResponse, SingleResponse, SuccessResponse } from '../../types/api.js';
 import type { ConversationDto } from '../../types/domain.js';
@@ -92,6 +93,25 @@ conversationsRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const conversation = await conversationsService.endConversation(id);
+
+    return c.json<SingleResponse<ConversationDto>>({
+      success: true,
+      data: conversation,
+    });
+  }
+);
+
+conversationsRoutes.patch(
+  '/:id/mode',
+  zValidator('param', z.object({ id: z.string().uuid() })),
+  zValidator('json', updateModeSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const conversation = await conversationsService.updateMode({
+      id,
+      mode: body.mode,
+    });
 
     return c.json<SingleResponse<ConversationDto>>({
       success: true,

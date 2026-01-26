@@ -31,6 +31,8 @@ function toDto(
     id: conversation.id,
     userId: conversation.userId,
     contextSummary: conversation.contextSummary,
+    mode: conversation.mode,
+    lastModeSwitch: conversation.lastModeSwitch,
     startedAt: conversation.startedAt,
     endedAt: conversation.endedAt,
     messageCount,
@@ -87,6 +89,22 @@ export async function updateConversation(input: UpdateConversationInput): Promis
 export async function endConversation(id: string): Promise<ConversationDto> {
   const conversation = await conversationsRepository.endConversation(id);
   return toDto(conversation);
+}
+
+export interface UpdateModeInput {
+  id: string;
+  mode: 'text' | 'voice';
+}
+
+export async function updateMode(input: UpdateModeInput): Promise<ConversationDto> {
+  const conversation = await conversationsRepository.getConversationById(input.id);
+
+  if (conversation === null) {
+    throw new AppError('CONVERSATION_NOT_FOUND', 'Conversation not found', 404);
+  }
+
+  const updated = await conversationsRepository.updateConversationMode(input.id, input.mode);
+  return toDto(updated);
 }
 
 export async function deleteConversation(id: string): Promise<void> {

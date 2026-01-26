@@ -23,8 +23,16 @@ function toMessageDto(message: searchRepository.SearchResultItem['message']): Me
     id: message.id,
     conversationId: message.conversationId,
     sender: message.sender,
+    inputType: message.inputType,
     content: message.content,
     maskedContent: message.maskedContent,
+    voiceMetadata: message.voiceMetadata
+      ? {
+          transcriptionConfidence: message.voiceMetadata.transcriptionConfidence,
+          audioDuration: message.voiceMetadata.audioDuration,
+          audioUrl: message.voiceMetadata.audioUrl,
+        }
+      : null,
     sentiment: message.sentiment,
     createdAt: message.createdAt,
   };

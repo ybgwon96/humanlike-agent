@@ -69,6 +69,23 @@ export async function endConversation(id: string): Promise<Conversation | null> 
   return updateConversation(id, { endedAt: new Date() });
 }
 
+export async function updateConversationMode(
+  id: string,
+  mode: 'text' | 'voice'
+): Promise<Conversation | null> {
+  const [conversation] = await db
+    .update(conversations)
+    .set({
+      mode,
+      lastModeSwitch: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(conversations.id, id))
+    .returning();
+
+  return conversation ?? null;
+}
+
 export async function deleteConversation(id: string): Promise<boolean> {
   const result = await db
     .delete(conversations)

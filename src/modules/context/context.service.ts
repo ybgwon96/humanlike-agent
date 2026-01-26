@@ -68,8 +68,16 @@ export async function assembleContext(input: AssembleContextInput): Promise<Cont
     id: m.id,
     conversationId: m.conversationId,
     sender: m.sender,
+    inputType: m.inputType,
     content: m.content,
     maskedContent: m.maskedContent,
+    voiceMetadata: m.voiceMetadata
+      ? {
+          transcriptionConfidence: m.voiceMetadata.transcriptionConfidence,
+          audioDuration: m.voiceMetadata.audioDuration,
+          audioUrl: m.voiceMetadata.audioUrl,
+        }
+      : null,
     sentiment: m.sentiment,
     createdAt: m.createdAt,
   }));
@@ -104,8 +112,16 @@ export async function assembleContext(input: AssembleContextInput): Promise<Cont
       id: m.id,
       conversationId: m.conversationId,
       sender: m.sender,
+      inputType: m.inputType,
       content: m.content,
       maskedContent: m.maskedContent,
+      voiceMetadata: m.voiceMetadata
+        ? {
+            transcriptionConfidence: m.voiceMetadata.transcriptionConfidence,
+            audioDuration: m.voiceMetadata.audioDuration,
+            audioUrl: m.voiceMetadata.audioUrl,
+          }
+        : null,
       sentiment: m.sentiment,
       createdAt: m.createdAt,
     }));
@@ -115,6 +131,8 @@ export async function assembleContext(input: AssembleContextInput): Promise<Cont
       id: conversation.id,
       userId: conversation.userId,
       contextSummary: input.includeContextSummary !== false ? conversation.contextSummary : null,
+      mode: conversation.mode,
+      lastModeSwitch: conversation.lastModeSwitch,
       startedAt: conversation.startedAt,
       endedAt: conversation.endedAt,
       messageCount: conversation.messageCount,
@@ -140,6 +158,8 @@ export async function assembleContext(input: AssembleContextInput): Promise<Cont
         id: conversation.id,
         userId: conversation.userId,
         contextSummary: conversation.contextSummary,
+        mode: conversation.mode,
+        lastModeSwitch: conversation.lastModeSwitch,
         startedAt: conversation.startedAt,
         endedAt: conversation.endedAt,
         messageCount: conversation.messageCount,
