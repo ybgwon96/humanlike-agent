@@ -10,10 +10,15 @@ const envSchema = z.object({
 
   ENCRYPTION_KEY: z.string().min(32).describe('AES-256 encryption key'),
 
+  DEEPGRAM_API_KEY: z.string().min(1).describe('Deepgram API key for STT'),
+  FISH_AUDIO_API_KEY: z.string().min(1).describe('Fish Audio API key for TTS'),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   MESSAGE_EXPIRY_DAYS: z.coerce.number().int().positive().default(180),
   CONTEXT_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
+
+  AUDIO_STORAGE_PATH: z.string().default('./storage/audio'),
 });
 
 export type Env = z.infer<typeof envSchema>;

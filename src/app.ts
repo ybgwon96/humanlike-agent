@@ -9,6 +9,7 @@ import { conversationsRoutes } from './modules/conversations/conversations.route
 import { searchRoutes } from './modules/search/search.routes.js';
 import { contextRoutes } from './modules/context/context.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { audioRoutes } from './modules/audio/audio.routes.js';
 
 type Variables = {
   requestId: string;
@@ -38,6 +39,7 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/conversations', conversationsRoutes);
   api.route('/search', searchRoutes);
   api.route('/context', contextRoutes);
+  api.route('/audio', audioRoutes);
 
   app.route('/api/v1', api);
 
