@@ -1,8 +1,10 @@
 import type { SenderType } from '../../db/schema/messages.js';
 import type { MessageDto } from '../../types/domain.js';
 import { maskSensitiveData } from '../../lib/privacy/masking.js';
+import { logAudit } from '../../lib/audit/index.js';
 import { AppError } from '../../middleware/error-handler.js';
 import * as messagesRepository from './messages.repository.js';
+import * as conversationsRepository from '../conversations/conversations.repository.js';
 
 export interface CreateMessageInput {
   conversationId: string;
@@ -137,11 +139,31 @@ export async function getMessagesByConversationId(
 }
 
 export async function deleteMessage(id: string): Promise<void> {
+  const message = await messagesRepository.getMessageById(id);
+
+  if (message === null) {
+    throw new AppError('MESSAGE_NOT_FOUND', 'Message not found', 404);
+  }
+
+  const conversation = await conversationsRepository.getConversationById(message.conversationId);
+
+  if (conversation === null) {
+    throw new AppError('CONVERSATION_NOT_FOUND', 'Associated conversation not found', 404);
+  }
+
   const deleted = await messagesRepository.deleteMessage(id);
 
   if (!deleted) {
     throw new AppError('MESSAGE_NOT_FOUND', 'Message not found', 404);
   }
+
+  await logAudit({
+    userId: conversation.userId,
+    resourceType: 'message',
+    resourceId: id,
+    action: 'delete',
+    metadata: { conversationId: message.conversationId },
+  });
 }
 
 export async function deleteExpiredMessages(): Promise<number> {

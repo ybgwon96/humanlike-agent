@@ -1,5 +1,6 @@
 import type { ConversationDto } from '../../types/domain.js';
 import { AppError } from '../../middleware/error-handler.js';
+import { logAudit } from '../../lib/audit/index.js';
 import * as conversationsRepository from './conversations.repository.js';
 
 export interface CreateConversationInput {
@@ -89,9 +90,22 @@ export async function endConversation(id: string): Promise<ConversationDto> {
 }
 
 export async function deleteConversation(id: string): Promise<void> {
+  const conversation = await conversationsRepository.getConversationById(id);
+
+  if (conversation === null) {
+    throw new AppError('CONVERSATION_NOT_FOUND', 'Conversation not found', 404);
+  }
+
   const deleted = await conversationsRepository.deleteConversation(id);
 
   if (!deleted) {
     throw new AppError('CONVERSATION_NOT_FOUND', 'Conversation not found', 404);
   }
+
+  await logAudit({
+    userId: conversation.userId,
+    resourceType: 'conversation',
+    resourceId: id,
+    action: 'delete',
+  });
 }

@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, timestamp, real, index, pgEnum } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { conversations } from './conversations';
+import { conversations } from './conversations.js';
 
 export const senderEnum = pgEnum('sender_type', ['USER', 'AGENT']);
 
