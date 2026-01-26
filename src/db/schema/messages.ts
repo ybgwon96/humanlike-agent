@@ -1,8 +1,15 @@
-import { pgTable, uuid, text, timestamp, real, index, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, real, index, pgEnum, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { conversations } from './conversations.js';
 
 export const senderEnum = pgEnum('sender_type', ['USER', 'AGENT']);
+export const inputTypeEnum = pgEnum('input_type', ['text', 'voice', 'system']);
+
+export interface VoiceMetadata {
+  transcriptionConfidence: number;
+  audioDuration: number;
+  audioUrl: string;
+}
 
 export const messages = pgTable(
   'messages',
@@ -12,8 +19,11 @@ export const messages = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
     sender: senderEnum('sender').notNull(),
+    inputType: inputTypeEnum('input_type').default('text').notNull(),
     content: text('content').notNull(),
     maskedContent: text('masked_content'),
+    voiceMetadata: jsonb('voice_metadata').$type<VoiceMetadata>(),
+    attachments: text('attachments').array(),
     sentiment: real('sentiment').default(0),
     contentSearch: text('content_search'),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -24,6 +34,7 @@ export const messages = pgTable(
     index('messages_created_at_idx').on(table.createdAt),
     index('messages_sentiment_idx').on(table.sentiment),
     index('messages_expires_at_idx').on(table.expiresAt),
+    index('messages_input_type_idx').on(table.inputType),
     index('messages_content_search_gin_idx').using(
       'gin',
       sql`to_tsvector('english', ${table.content})`
@@ -34,3 +45,4 @@ export const messages = pgTable(
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 export type SenderType = 'USER' | 'AGENT';
+export type InputType = 'text' | 'voice' | 'system';

@@ -1,19 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { logAudit } from './audit.service.js';
 
+const mockReturning = vi.fn();
+const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
+const mockInsert = vi.fn().mockReturnValue({ values: mockValues });
+
 vi.mock('../../config/database.js', () => ({
   db: {
-    insert: vi.fn().mockReturnThis(),
-    values: vi.fn().mockReturnThis(),
-    returning: vi.fn(),
+    insert: () => mockInsert(),
   },
 }));
-
-const mockDb = vi.mocked(await import('../../config/database.js')).db;
 
 describe('audit.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockInsert.mockReturnValue({ values: mockValues });
+    mockValues.mockReturnValue({ returning: mockReturning });
   });
 
   describe('logAudit', () => {
@@ -28,7 +30,7 @@ describe('audit.service', () => {
         createdAt: new Date(),
       };
 
-      mockDb.returning.mockResolvedValueOnce([mockAuditLog]);
+      mockReturning.mockResolvedValueOnce([mockAuditLog]);
 
       await logAudit({
         userId: '550e8400-e29b-41d4-a716-446655440000',
@@ -37,8 +39,8 @@ describe('audit.service', () => {
         action: 'delete',
       });
 
-      expect(mockDb.insert).toHaveBeenCalled();
-      expect(mockDb.values).toHaveBeenCalledWith({
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith({
         userId: '550e8400-e29b-41d4-a716-446655440000',
         resourceType: 'conversation',
         resourceId: '550e8400-e29b-41d4-a716-446655440002',
@@ -58,7 +60,7 @@ describe('audit.service', () => {
         createdAt: new Date(),
       };
 
-      mockDb.returning.mockResolvedValueOnce([mockAuditLog]);
+      mockReturning.mockResolvedValueOnce([mockAuditLog]);
 
       await logAudit({
         userId: '550e8400-e29b-41d4-a716-446655440000',
@@ -68,8 +70,8 @@ describe('audit.service', () => {
         metadata: { conversationId: '550e8400-e29b-41d4-a716-446655440002' },
       });
 
-      expect(mockDb.insert).toHaveBeenCalled();
-      expect(mockDb.values).toHaveBeenCalledWith({
+      expect(mockInsert).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith({
         userId: '550e8400-e29b-41d4-a716-446655440000',
         resourceType: 'message',
         resourceId: '550e8400-e29b-41d4-a716-446655440003',
@@ -79,7 +81,7 @@ describe('audit.service', () => {
     });
 
     it('DB 저장 실패 시 에러를 던진다', async () => {
-      mockDb.returning.mockResolvedValueOnce([]);
+      mockReturning.mockResolvedValueOnce([]);
 
       await expect(
         logAudit({
