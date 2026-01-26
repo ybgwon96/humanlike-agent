@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import * as chatService from './chat.service.js';
 import {
   sendTextMessageSchema,
+  streamChatSchema,
   type TextMessageResponse,
   type VoiceMessageResponse,
 } from './chat.schemas.js';
@@ -84,4 +86,28 @@ chatRoutes.post('/voice', zValidator('query', voiceQuerySchema), async (c) => {
     },
     201
   );
+});
+
+chatRoutes.post('/stream', zValidator('json', streamChatSchema), async (c) => {
+  const body = c.req.valid('json');
+
+  return streamSSE(c, async (stream) => {
+    try {
+      for await (const chunk of chatService.streamChat({
+        conversationId: body.conversationId,
+        content: body.content,
+      })) {
+        await stream.writeSSE({
+          data: JSON.stringify(chunk),
+        });
+      }
+    } catch (error) {
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: 'error',
+          data: error instanceof Error ? error.message : 'Unknown error',
+        }),
+      });
+    }
+  });
 });

@@ -12,6 +12,9 @@ const envSchema = z.object({
 
   DEEPGRAM_API_KEY: z.string().min(1).describe('Deepgram API key for STT'),
   FISH_AUDIO_API_KEY: z.string().min(1).describe('Fish Audio API key for TTS'),
+  ANTHROPIC_API_KEY: z.string().min(1).describe('Anthropic API key for LLM'),
+  LLM_MODEL: z.string().default('claude-opus-4-5-20251101'),
+  LLM_MAX_TOKENS: z.coerce.number().int().positive().default(4096),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 

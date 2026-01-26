@@ -27,3 +27,16 @@ export interface VoiceMessageResponse {
   duration: number;
   lowConfidence: boolean;
 }
+
+export const streamChatSchema = z.object({
+  conversationId: z.string().uuid(),
+  content: z.string().min(1).max(10000),
+});
+
+export type StreamChatRequest = z.infer<typeof streamChatSchema>;
+
+export interface StreamChunkResponse {
+  type: 'content' | 'done' | 'error' | 'message_saved';
+  data: string;
+  messageId?: string;
+}

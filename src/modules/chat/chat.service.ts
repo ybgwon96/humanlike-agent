@@ -1,9 +1,11 @@
 import type { InputType, VoiceMetadata } from '../../db/schema/messages.js';
-import type { TextMessageResponse, VoiceMessageResponse } from './chat.schemas.js';
+import type { TextMessageResponse, VoiceMessageResponse, StreamChunkResponse } from './chat.schemas.js';
 import { maskSensitiveData } from '../../lib/privacy/masking.js';
 import { AppError } from '../../middleware/error-handler.js';
 import { transcribeAudio, STTError } from '../../services/stt/index.js';
 import { saveRecording, getAudioUrl, type RecordingFormat } from '../../services/audio-storage/index.js';
+import { streamCompletion, buildMessages, LLMError } from '../../services/llm/index.js';
+import { assembleContext, formatContextForLLM } from '../context/context.service.js';
 import * as messagesRepository from '../messages/messages.repository.js';
 import * as conversationsRepository from '../conversations/conversations.repository.js';
 
@@ -148,5 +150,81 @@ export async function sendVoiceMessage(input: SendVoiceMessageInput): Promise<Vo
       throw new AppError(error.code, error.message, 400);
     }
     throw error;
+  }
+}
+
+export interface StreamChatInput {
+  conversationId: string;
+  content: string;
+}
+
+export async function* streamChat(
+  input: StreamChatInput
+): AsyncGenerator<StreamChunkResponse> {
+  const conversation = await conversationsRepository.getConversationById(input.conversationId);
+
+  if (conversation === null) {
+    yield { type: 'error', data: 'Conversation not found' };
+    return;
+  }
+
+  if (conversation.endedAt !== null) {
+    yield { type: 'error', data: 'Cannot send message to ended conversation' };
+    return;
+  }
+
+  const { maskedContent } = maskSensitiveData(input.content);
+  const sentiment = analyzeSentiment(input.content);
+
+  const userMessage = await messagesRepository.createMessage({
+    conversationId: input.conversationId,
+    sender: 'USER',
+    inputType: 'text',
+    content: input.content,
+    maskedContent,
+    sentiment,
+    contentSearch: input.content,
+  });
+
+  yield {
+    type: 'message_saved',
+    data: '',
+    messageId: userMessage.id,
+  };
+
+  try {
+    const context = await assembleContext({ conversationId: input.conversationId });
+    const contextMessages = formatContextForLLM(context);
+    const llmMessages = buildMessages(contextMessages, input.content);
+
+    let fullResponse = '';
+
+    for await (const chunk of streamCompletion({ messages: llmMessages, model: '' })) {
+      if (chunk.type === 'content') {
+        fullResponse += chunk.data;
+        yield { type: 'content', data: chunk.data };
+      } else if (chunk.type === 'done') {
+        const { maskedContent: agentMaskedContent } = maskSensitiveData(fullResponse);
+        const agentSentiment = analyzeSentiment(fullResponse);
+
+        const agentMessage = await messagesRepository.createMessage({
+          conversationId: input.conversationId,
+          sender: 'AGENT',
+          inputType: 'text',
+          content: fullResponse,
+          maskedContent: agentMaskedContent,
+          sentiment: agentSentiment,
+          contentSearch: fullResponse,
+        });
+
+        yield { type: 'done', data: '', messageId: agentMessage.id };
+      }
+    }
+  } catch (error) {
+    if (error instanceof LLMError) {
+      yield { type: 'error', data: error.message };
+      return;
+    }
+    yield { type: 'error', data: 'AI 응답 생성 중 오류가 발생했습니다' };
   }
 }

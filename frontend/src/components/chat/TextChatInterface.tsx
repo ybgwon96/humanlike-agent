@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, RefreshCw } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { MessageBubble } from "./MessageBubble"
 import { MessageInput } from "./MessageInput"
 import { TypingIndicator } from "./TypingIndicator"
-import { fetchMessages, sendTextMessage, type Message } from "@/lib/api"
+import { fetchMessages, streamTextMessage, type Message } from "@/lib/api"
 
 interface TextChatInterfaceProps {
   conversationId: string
@@ -17,49 +17,13 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
   const queryClient = useQueryClient()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingContent, setStreamingContent] = useState("")
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => fetchMessages(conversationId),
-    refetchInterval: 5000,
-  })
-
-  const sendMutation = useMutation({
-    mutationFn: (content: string) => sendTextMessage({ conversationId, content }),
-    onMutate: async (content) => {
-      setError(null)
-      await queryClient.cancelQueries({ queryKey: ["messages", conversationId] })
-
-      const previousMessages = queryClient.getQueryData<Message[]>(["messages", conversationId])
-
-      const optimisticMessage: Message = {
-        id: `temp-${Date.now()}`,
-        conversationId,
-        sender: "USER",
-        inputType: "text",
-        content,
-        createdAt: new Date().toISOString(),
-      }
-
-      queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) => [...old, optimisticMessage])
-
-      return { previousMessages }
-    },
-    onError: (err, _content, context) => {
-      setError(err instanceof Error ? err.message : "메시지 전송에 실패했습니다")
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", conversationId], context.previousMessages)
-      }
-    },
-    onSuccess: (newMessage) => {
-      queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) => {
-        const filtered = old.filter((m) => !m.id.startsWith("temp-"))
-        return [...filtered, newMessage]
-      })
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages", conversationId] })
-    },
+    refetchInterval: isStreaming ? false : 5000,
   })
 
   const scrollToBottom = useCallback(() => {
@@ -70,13 +34,65 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, sendMutation.isPending, scrollToBottom])
+  }, [messages, isStreaming, streamingContent, scrollToBottom])
 
   const handleSend = useCallback(
-    (content: string) => {
-      sendMutation.mutate(content)
+    async (content: string) => {
+      setError(null)
+      setIsStreaming(true)
+      setStreamingContent("")
+
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        conversationId,
+        sender: "USER",
+        inputType: "text",
+        content,
+        createdAt: new Date().toISOString(),
+      }
+
+      queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) => [
+        ...old,
+        optimisticMessage,
+      ])
+
+      await streamTextMessage(
+        { conversationId, content },
+        {
+          onChunk: (chunk) => {
+            setStreamingContent((prev) => prev + chunk)
+          },
+          onComplete: () => {
+            setIsStreaming(false)
+            setStreamingContent("")
+
+            queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) => {
+              const filtered = old.filter((m) => !m.id.startsWith("temp-"))
+              return filtered
+            })
+
+            queryClient.invalidateQueries({ queryKey: ["messages", conversationId] })
+          },
+          onError: (errorMessage) => {
+            setError(errorMessage)
+            setIsStreaming(false)
+            setStreamingContent("")
+
+            queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) =>
+              old.filter((m) => !m.id.startsWith("temp-"))
+            )
+          },
+          onUserMessageSaved: (messageId) => {
+            queryClient.setQueryData<Message[]>(["messages", conversationId], (old = []) => {
+              return old.map((m) =>
+                m.id.startsWith("temp-") ? { ...m, id: messageId } : m
+              )
+            })
+          },
+        }
+      )
     },
-    [sendMutation]
+    [conversationId, queryClient]
   )
 
   const handleRetry = useCallback(() => {
@@ -91,6 +107,17 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
       </div>
     )
   }
+
+  const streamingMessage: Message | null = isStreaming && streamingContent
+    ? {
+        id: "streaming",
+        conversationId,
+        sender: "AGENT",
+        inputType: "text",
+        content: streamingContent,
+        createdAt: new Date().toISOString(),
+      }
+    : null
 
   return (
     <div className="flex h-[calc(100vh-64px)] flex-col">
@@ -109,18 +136,25 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
 
       <ScrollArea className="flex-1 p-4">
         <div ref={scrollRef} className="space-y-4">
-          {messages.length === 0 ? (
+          {messages.length === 0 && !isStreaming ? (
             <div className="flex h-full items-center justify-center py-20 text-muted-foreground">
               대화를 시작해보세요
             </div>
           ) : (
-            messages.map((message) => <MessageBubble key={message.id} message={message} />)
+            <>
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+              {streamingMessage && (
+                <MessageBubble key="streaming" message={streamingMessage} isStreaming />
+              )}
+            </>
           )}
-          {sendMutation.isPending && <TypingIndicator />}
+          {isStreaming && !streamingContent && <TypingIndicator />}
         </div>
       </ScrollArea>
 
-      <MessageInput onSend={handleSend} disabled={sendMutation.isPending} />
+      <MessageInput onSend={handleSend} disabled={isStreaming} />
     </div>
   )
 }

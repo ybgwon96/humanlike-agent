@@ -151,3 +151,88 @@ export async function createConversation(userId: string): Promise<Conversation> 
   })
   return handleResponse<Conversation>(response)
 }
+
+interface StreamChunk {
+  type: "content" | "done" | "error" | "message_saved"
+  data: string
+  messageId?: string
+}
+
+export interface StreamCallbacks {
+  onChunk: (chunk: string) => void
+  onComplete: (agentMessageId?: string) => void
+  onError: (error: string) => void
+  onUserMessageSaved?: (messageId: string) => void
+}
+
+export async function streamTextMessage(
+  request: SendMessageRequest,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Request failed" }))
+    callbacks.onError(error.error?.message || error.message || `HTTP ${response.status}`)
+    return
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    callbacks.onError("스트림을 읽을 수 없습니다")
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const chunk = JSON.parse(jsonStr) as StreamChunk
+
+              switch (chunk.type) {
+                case "content":
+                  callbacks.onChunk(chunk.data)
+                  break
+                case "done":
+                  callbacks.onComplete(chunk.messageId || "")
+                  break
+                case "error":
+                  callbacks.onError(chunk.data)
+                  break
+                case "message_saved":
+                  callbacks.onUserMessageSaved?.(chunk.messageId || "")
+                  break
+              }
+            } catch {
+              // JSON parse 실패 무시
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    callbacks.onError(error instanceof Error ? error.message : "스트림 오류")
+  } finally {
+    reader.releaseLock()
+  }
+}

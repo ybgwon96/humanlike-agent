@@ -6,6 +6,7 @@ import type { Message } from "@/lib/api"
 
 interface MessageBubbleProps {
   message: Message
+  isStreaming?: boolean
 }
 
 function CodeBlock({ className, children }: { className?: string; children: string }) {
@@ -30,7 +31,7 @@ function CodeBlock({ className, children }: { className?: string; children: stri
   )
 }
 
-export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
   const isUser = message.sender === "USER"
 
   const markdownComponents = useMemo(
@@ -72,6 +73,9 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
       >
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown components={markdownComponents}>{message.content}</ReactMarkdown>
+          {isStreaming && (
+            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-current" />
+          )}
         </div>
         <div className={cn("mt-1 text-xs", isUser ? "text-primary-foreground/70" : "text-muted-foreground")}>
           {formatTime(message.createdAt)}
