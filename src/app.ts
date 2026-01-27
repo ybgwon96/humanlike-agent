@@ -12,6 +12,7 @@ import { usersRoutes } from './modules/users/users.routes.js';
 import { audioRoutes } from './modules/audio/audio.routes.js';
 import { chatRoutes } from './modules/chat/index.js';
 import { ttsRoutes } from './modules/tts/index.js';
+import { notificationRoutes } from './modules/notification/index.js';
 
 type Variables = {
   requestId: string;
@@ -44,6 +45,7 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/audio', audioRoutes);
   api.route('/chat', chatRoutes);
   api.route('/tts', ttsRoutes);
+  api.route('/notifications', notificationRoutes);
 
   app.route('/api/v1', api);
 

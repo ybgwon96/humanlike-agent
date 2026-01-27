@@ -165,6 +165,51 @@ export interface StreamCallbacks {
   onUserMessageSaved?: (messageId: string) => void
 }
 
+export interface Notification {
+  id: string
+  userId: string
+  type: "greeting" | "reminder" | "alert" | "proactive"
+  priority: "low" | "normal" | "high"
+  title: string
+  content: string
+  ttsEnabled: boolean
+  soundEnabled: boolean
+  isRead: boolean
+  isDismissed: boolean
+  createdAt: string
+}
+
+export async function fetchPendingNotifications(userId: string, limit: number = 10): Promise<Notification[]> {
+  const response = await fetch(`${API_BASE}/notifications/pending?limit=${limit}`, {
+    headers: { "x-user-id": userId },
+  })
+  return handleResponse<Notification[]>(response)
+}
+
+export async function dismissNotification(notificationId: string, userId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/notifications/dismiss/${notificationId}`, {
+    method: "POST",
+    headers: { "x-user-id": userId },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Dismiss failed" }))
+    throw new Error(error.error?.message || error.message || `HTTP ${response.status}`)
+  }
+}
+
+export async function markNotificationAsRead(notificationId: string, userId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/notifications/read/${notificationId}`, {
+    method: "POST",
+    headers: { "x-user-id": userId },
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Mark as read failed" }))
+    throw new Error(error.error?.message || error.message || `HTTP ${response.status}`)
+  }
+}
+
 export async function streamTextMessage(
   request: SendMessageRequest,
   callbacks: StreamCallbacks
