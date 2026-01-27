@@ -16,6 +16,7 @@ import { notificationRoutes } from './modules/notification/index.js';
 import { activityRoutes } from './modules/activity/index.js';
 import { personalityRoutes } from './modules/personality/index.js';
 import { emotionRoutes } from './modules/emotion/index.js';
+import { proactiveRoutes } from './modules/proactive/index.js';
 
 type Variables = {
   requestId: string;
@@ -52,6 +53,7 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/personality', personalityRoutes);
   api.route('/', activityRoutes);
   api.route('/', emotionRoutes);
+  api.route('/', proactiveRoutes);
 
   app.route('/api/v1', api);
 

@@ -7,3 +7,4 @@ export * from './activity-context.js';
 export * from './personality-profile.js';
 export * from './user-personality-adjustments.js';
 export * from './emotion-analyses.js';
+export * from './proactive-engagements.js';
