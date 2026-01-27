@@ -17,6 +17,7 @@ import { activityRoutes } from './modules/activity/index.js';
 import { personalityRoutes } from './modules/personality/index.js';
 import { emotionRoutes } from './modules/emotion/index.js';
 import { proactiveRoutes } from './modules/proactive/index.js';
+import { trustScoreRoutes } from './modules/trust-score/index.js';
 
 type Variables = {
   requestId: string;
@@ -54,6 +55,7 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/', activityRoutes);
   api.route('/', emotionRoutes);
   api.route('/', proactiveRoutes);
+  api.route('/', trustScoreRoutes);
 
   app.route('/api/v1', api);
 
