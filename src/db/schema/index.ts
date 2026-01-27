@@ -11,3 +11,6 @@ export * from './proactive-engagements.js';
 export * from './agents.js';
 export * from './agent-tasks.js';
 export * from './task-executions.js';
+export * from './feedback-events.js';
+export * from './learning-adjustments.js';
+export * from './user-learning-preferences.js';
