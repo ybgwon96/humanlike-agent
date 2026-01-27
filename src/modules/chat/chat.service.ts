@@ -4,45 +4,17 @@ import { maskSensitiveData } from '../../lib/privacy/masking.js';
 import { AppError } from '../../middleware/error-handler.js';
 import { transcribeAudio, STTError } from '../../services/stt/index.js';
 import { saveRecording, getAudioUrl, type RecordingFormat } from '../../services/audio-storage/index.js';
-import { streamCompletion, buildMessages, LLMError } from '../../services/llm/index.js';
+import { streamCompletion, buildMessages, LLMError, validateResponse } from '../../services/llm/index.js';
 import { assembleContext, formatContextForLLM } from '../context/context.service.js';
+import { getPersonalityForUser, buildSystemPrompt } from '../personality/index.js';
+import {
+  analyzeEmotionFromContent,
+  buildEmotionAdjustedPrompt,
+  shouldAdjustResponse,
+  getLegacySentimentScore,
+} from '../emotion/index.js';
 import * as messagesRepository from '../messages/messages.repository.js';
 import * as conversationsRepository from '../conversations/conversations.repository.js';
-
-function analyzeSentiment(content: string): number {
-  const positiveWords = [
-    'good', 'great', 'excellent', 'amazing', 'wonderful', 'happy', 'love', 'like',
-    'thank', 'thanks', 'helpful', 'perfect', '좋아', '감사', '최고', '훌륭',
-  ];
-  const negativeWords = [
-    'bad', 'terrible', 'awful', 'hate', 'dislike', 'angry', 'sad', 'wrong',
-    'error', 'fail', 'problem', 'issue', '싫어', '문제', '실패', '오류',
-  ];
-
-  const lowerContent = content.toLowerCase();
-  let score = 0;
-  let wordCount = 0;
-
-  for (const word of positiveWords) {
-    if (lowerContent.includes(word)) {
-      score += 1;
-      wordCount += 1;
-    }
-  }
-
-  for (const word of negativeWords) {
-    if (lowerContent.includes(word)) {
-      score -= 1;
-      wordCount += 1;
-    }
-  }
-
-  if (wordCount === 0) {
-    return 0;
-  }
-
-  return Math.max(-1, Math.min(1, score / wordCount));
-}
 
 export interface SendTextMessageInput {
   conversationId: string;
@@ -61,7 +33,7 @@ export async function sendTextMessage(input: SendTextMessageInput): Promise<Text
   }
 
   const { maskedContent } = maskSensitiveData(input.content);
-  const sentiment = analyzeSentiment(input.content);
+  const sentiment = getLegacySentimentScore(input.content);
 
   const message = await messagesRepository.createMessage({
     conversationId: input.conversationId,
@@ -107,7 +79,7 @@ export async function sendVoiceMessage(input: SendVoiceMessageInput): Promise<Vo
 
     const format = input.mimeType === 'audio/webm' ? 'webm' : 'ogg';
     const { maskedContent } = maskSensitiveData(transcriptionResult.transcription);
-    const sentiment = analyzeSentiment(transcriptionResult.transcription);
+    const sentiment = getLegacySentimentScore(transcriptionResult.transcription);
 
     const message = await messagesRepository.createMessage({
       conversationId: input.conversationId,
@@ -174,7 +146,8 @@ export async function* streamChat(
   }
 
   const { maskedContent } = maskSensitiveData(input.content);
-  const sentiment = analyzeSentiment(input.content);
+  const emotion = analyzeEmotionFromContent(input.content);
+  const sentiment = emotion.rawScore;
 
   const userMessage = await messagesRepository.createMessage({
     conversationId: input.conversationId,
@@ -197,15 +170,38 @@ export async function* streamChat(
     const contextMessages = formatContextForLLM(context);
     const llmMessages = buildMessages(contextMessages, input.content);
 
+    const personalityContext = await getPersonalityForUser(conversation.userId);
+    let systemPrompt = personalityContext !== null
+      ? buildSystemPrompt(personalityContext)
+      : undefined;
+
+    if (systemPrompt && shouldAdjustResponse(emotion)) {
+      systemPrompt = buildEmotionAdjustedPrompt(systemPrompt, emotion);
+    }
+
     let fullResponse = '';
 
-    for await (const chunk of streamCompletion({ messages: llmMessages, model: '' })) {
+    for await (const chunk of streamCompletion({
+      messages: llmMessages,
+      model: '',
+      systemPrompt,
+    })) {
       if (chunk.type === 'content') {
         fullResponse += chunk.data;
         yield { type: 'content', data: chunk.data };
       } else if (chunk.type === 'done') {
+        if (personalityContext !== null) {
+          const validation = validateResponse(fullResponse, personalityContext.profile);
+          if (!validation.isValid) {
+            yield {
+              type: 'warning',
+              data: `Response validation: ${validation.failedChecks.join(', ')}`,
+            } as StreamChunkResponse;
+          }
+        }
+
         const { maskedContent: agentMaskedContent } = maskSensitiveData(fullResponse);
-        const agentSentiment = analyzeSentiment(fullResponse);
+        const agentSentiment = getLegacySentimentScore(fullResponse);
 
         const agentMessage = await messagesRepository.createMessage({
           conversationId: input.conversationId,

@@ -3,6 +3,7 @@ import type { MessageDto } from '../../types/domain.js';
 import { maskSensitiveData } from '../../lib/privacy/masking.js';
 import { logAudit } from '../../lib/audit/index.js';
 import { AppError } from '../../middleware/error-handler.js';
+import { getLegacySentimentScore } from '../emotion/index.js';
 import * as messagesRepository from './messages.repository.js';
 import * as conversationsRepository from '../conversations/conversations.repository.js';
 
@@ -16,69 +17,6 @@ export interface GetMessagesInput {
   conversationId: string;
   page?: number;
   limit?: number;
-}
-
-function analyzeSentiment(content: string): number {
-  const positiveWords = [
-    'good',
-    'great',
-    'excellent',
-    'amazing',
-    'wonderful',
-    'happy',
-    'love',
-    'like',
-    'thank',
-    'thanks',
-    'helpful',
-    'perfect',
-    '좋아',
-    '감사',
-    '최고',
-    '훌륭',
-  ];
-  const negativeWords = [
-    'bad',
-    'terrible',
-    'awful',
-    'hate',
-    'dislike',
-    'angry',
-    'sad',
-    'wrong',
-    'error',
-    'fail',
-    'problem',
-    'issue',
-    '싫어',
-    '문제',
-    '실패',
-    '오류',
-  ];
-
-  const lowerContent = content.toLowerCase();
-  let score = 0;
-  let wordCount = 0;
-
-  for (const word of positiveWords) {
-    if (lowerContent.includes(word)) {
-      score += 1;
-      wordCount += 1;
-    }
-  }
-
-  for (const word of negativeWords) {
-    if (lowerContent.includes(word)) {
-      score -= 1;
-      wordCount += 1;
-    }
-  }
-
-  if (wordCount === 0) {
-    return 0;
-  }
-
-  return Math.max(-1, Math.min(1, score / wordCount));
 }
 
 function toDto(message: Awaited<ReturnType<typeof messagesRepository.getMessageById>>): MessageDto {
@@ -107,7 +45,7 @@ function toDto(message: Awaited<ReturnType<typeof messagesRepository.getMessageB
 
 export async function createMessage(input: CreateMessageInput): Promise<MessageDto> {
   const { maskedContent } = maskSensitiveData(input.content);
-  const sentiment = analyzeSentiment(input.content);
+  const sentiment = getLegacySentimentScore(input.content);
 
   const message = await messagesRepository.createMessage({
     conversationId: input.conversationId,

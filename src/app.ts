@@ -13,6 +13,9 @@ import { audioRoutes } from './modules/audio/audio.routes.js';
 import { chatRoutes } from './modules/chat/index.js';
 import { ttsRoutes } from './modules/tts/index.js';
 import { notificationRoutes } from './modules/notification/index.js';
+import { activityRoutes } from './modules/activity/index.js';
+import { personalityRoutes } from './modules/personality/index.js';
+import { emotionRoutes } from './modules/emotion/index.js';
 
 type Variables = {
   requestId: string;
@@ -46,6 +49,9 @@ export function createApp(): Hono<{ Variables: Variables }> {
   api.route('/chat', chatRoutes);
   api.route('/tts', ttsRoutes);
   api.route('/notifications', notificationRoutes);
+  api.route('/personality', personalityRoutes);
+  api.route('/', activityRoutes);
+  api.route('/', emotionRoutes);
 
   app.route('/api/v1', api);
 

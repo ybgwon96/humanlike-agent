@@ -3,3 +3,7 @@ export * from './conversations.js';
 export * from './messages.js';
 export * from './audit-logs.js';
 export * from './notifications.js';
+export * from './activity-context.js';
+export * from './personality-profile.js';
+export * from './user-personality-adjustments.js';
+export * from './emotion-analyses.js';
