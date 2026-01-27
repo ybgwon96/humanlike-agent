@@ -15,7 +15,7 @@ proactiveRoutes.post(
   zValidator('json', evaluateEngagementSchema),
   async (c) => {
     const { userId } = c.req.valid('json');
-    const result = await proactiveService.evaluateAndEngage(userId);
+    const result = await proactiveService.evaluateAndEngageEnhanced(userId);
     return c.json(result);
   }
 );

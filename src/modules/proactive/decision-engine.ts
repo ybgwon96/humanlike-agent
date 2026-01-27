@@ -5,8 +5,20 @@ import type {
   TriggerReason,
   TriggerContext,
   MessagePriority,
+  EnhancedUserState,
+  EnhancedEngagementDecision,
+  TimingDecision,
 } from './proactive.types.js';
-import { DEFAULT_THRESHOLDS, FREQUENCY_LIMITS } from './proactive.types.js';
+import { DEFAULT_THRESHOLDS, FREQUENCY_LIMITS, ENHANCED_THRESHOLDS } from './proactive.types.js';
+import {
+  calculateInterruptionCost,
+  type InterruptionCostResult,
+} from './interruption-cost.js';
+import {
+  calculateConversationValue,
+  type ConversationValueResult,
+} from './conversation-value.js';
+import { detectBreak } from './break-detector.js';
 
 const MESSAGE_TEMPLATES = {
   STUCK_TIMEOUT: (minutes: number) =>
@@ -258,4 +270,110 @@ export function getPriorityForReason(reason: TriggerReason): MessagePriority {
     default:
       return 'normal';
   }
+}
+
+function determineTimingDecision(
+  interruptionCost: InterruptionCostResult,
+  conversationValue: ConversationValueResult,
+  isBreak: boolean
+): { timing: TimingDecision; maxWaitMinutes?: number } {
+  const { costScore } = interruptionCost;
+  const { value } = conversationValue;
+
+  if (value > costScore * ENHANCED_THRESHOLDS.VALUE_COST_IMMEDIATE_RATIO) {
+    return { timing: 'IMMEDIATE' };
+  }
+
+  if (value > costScore && isBreak) {
+    return { timing: 'IMMEDIATE' };
+  }
+
+  if (value > costScore) {
+    return {
+      timing: 'WAIT_FOR_BREAK',
+      maxWaitMinutes: ENHANCED_THRESHOLDS.MAX_WAIT_FOR_BREAK_MINUTES,
+    };
+  }
+
+  return { timing: 'DEFER' };
+}
+
+export function evaluateEnhancedEngagement(
+  state: EnhancedUserState,
+  settings: UserEngagementSettings
+): EnhancedEngagementDecision {
+  const interruptionCost = calculateInterruptionCost({
+    focusScore: state.focusScore,
+    activeFile: state.activeFile,
+    focusDurationMinutes: state.activityDurationMinutes,
+    activityType: state.activityType,
+  });
+
+  const baseDecision = evaluateEngagement(state, settings);
+
+  const conversationValue = calculateConversationValue({
+    triggerReason: baseDecision.reason,
+    emotionType: state.emotionType,
+    emotionIntensity: state.emotionIntensity,
+    isStuck: state.activityType === 'STUCK',
+    idleDurationMinutes: state.activityType === 'IDLE' ? state.activityDurationMinutes : 0,
+  });
+
+  const breakDetection = detectBreak({
+    currentActivity: state.activityType,
+    previousActivity: state.previousActivity,
+    currentFocusScore: state.focusScore,
+    previousFocusScore: state.previousFocusScore,
+    windowTitle: state.windowTitle,
+    focusDropTimeWindowMinutes: ENHANCED_THRESHOLDS.FOCUS_DROP_TIME_WINDOW_MINUTES,
+  });
+
+  if (baseDecision.action === 'BLOCK' || baseDecision.action === 'SKIP') {
+    return {
+      ...baseDecision,
+      timing: 'DEFER',
+      interruptionCost,
+      conversationValue,
+    };
+  }
+
+  const { timing, maxWaitMinutes } = determineTimingDecision(
+    interruptionCost,
+    conversationValue,
+    breakDetection.isBreak
+  );
+
+  if (timing === 'DEFER') {
+    const deferUntil = new Date();
+    deferUntil.setMinutes(deferUntil.getMinutes() + DEFAULT_THRESHOLDS.DEFER_DURATION_MINUTES);
+
+    return {
+      ...baseDecision,
+      shouldEngage: false,
+      action: 'DEFER',
+      deferUntil,
+      timing,
+      interruptionCost,
+      conversationValue,
+    };
+  }
+
+  if (timing === 'WAIT_FOR_BREAK') {
+    return {
+      ...baseDecision,
+      shouldEngage: false,
+      action: 'DEFER',
+      timing,
+      interruptionCost,
+      conversationValue,
+      maxWaitMinutes,
+    };
+  }
+
+  return {
+    ...baseDecision,
+    timing: 'IMMEDIATE',
+    interruptionCost,
+    conversationValue,
+  };
 }

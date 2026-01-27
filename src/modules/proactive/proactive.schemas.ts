@@ -85,9 +85,35 @@ export const engagementPatternResponseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const timingDecisionSchema = z.enum(['IMMEDIATE', 'WAIT_FOR_BREAK', 'DEFER']);
+
+export const interruptionLevelSchema = z.enum(['HIGH', 'MEDIUM', 'LOW']);
+
+export const interruptionCostResponseSchema = z.object({
+  costScore: z.number().min(0).max(150),
+  recoveryMinutes: z.number().min(0),
+  level: interruptionLevelSchema,
+});
+
+export const conversationValueResponseSchema = z.object({
+  value: z.number().min(0).max(100),
+  reasoning: z.string(),
+});
+
+export const enhancedEngagementDecisionResponseSchema = engagementDecisionResponseSchema.extend({
+  timing: timingDecisionSchema,
+  interruptionCost: interruptionCostResponseSchema,
+  conversationValue: conversationValueResponseSchema,
+  maxWaitMinutes: z.number().optional(),
+});
+
 export type EvaluateEngagementInput = z.infer<typeof evaluateEngagementSchema>;
 export type FeedbackInput = z.infer<typeof feedbackSchema>;
 export type UpdatePreferencesInput = z.infer<typeof updatePreferencesSchema>;
 export type PauseEngagementInput = z.infer<typeof pauseEngagementSchema>;
 export type EngagementDecisionResponse = z.infer<typeof engagementDecisionResponseSchema>;
 export type EngagementPatternResponse = z.infer<typeof engagementPatternResponseSchema>;
+export type TimingDecision = z.infer<typeof timingDecisionSchema>;
+export type InterruptionCostResponse = z.infer<typeof interruptionCostResponseSchema>;
+export type ConversationValueResponse = z.infer<typeof conversationValueResponseSchema>;
+export type EnhancedEngagementDecisionResponse = z.infer<typeof enhancedEngagementDecisionResponseSchema>;

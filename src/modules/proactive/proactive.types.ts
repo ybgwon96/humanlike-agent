@@ -72,3 +72,36 @@ export const FREQUENCY_LIMITS: Record<FrequencyPreference, number> = {
   BALANCED: 10,
   PROACTIVE: 20,
 } as const;
+
+export type TimingDecision = 'IMMEDIATE' | 'WAIT_FOR_BREAK' | 'DEFER';
+
+export interface EnhancedUserState extends UserState {
+  activeFile: string | null;
+  windowTitle: string | null;
+  previousActivity: import('../../db/schema/activity-context.js').ActivityType | null;
+  previousFocusScore: number;
+}
+
+export interface InterruptionCostResult {
+  costScore: number;
+  recoveryMinutes: number;
+  level: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+export interface ConversationValueResult {
+  value: number;
+  reasoning: string;
+}
+
+export interface EnhancedEngagementDecision extends EngagementDecision {
+  timing: TimingDecision;
+  interruptionCost: InterruptionCostResult;
+  conversationValue: ConversationValueResult;
+  maxWaitMinutes?: number;
+}
+
+export const ENHANCED_THRESHOLDS = {
+  VALUE_COST_IMMEDIATE_RATIO: 2,
+  MAX_WAIT_FOR_BREAK_MINUTES: 30,
+  FOCUS_DROP_TIME_WINDOW_MINUTES: 5,
+} as const;

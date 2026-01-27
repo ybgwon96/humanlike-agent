@@ -1,9 +1,10 @@
 import { AppError } from '../../middleware/error-handler.js';
 import * as proactiveRepository from './proactive.repository.js';
 import * as activityService from '../activity/activity.service.js';
+import * as activityRepository from '../activity/activity.repository.js';
 import * as emotionService from '../emotion/emotion.service.js';
 import * as notificationService from '../notification/notification.service.js';
-import { evaluateEngagement } from './decision-engine.js';
+import { evaluateEngagement, evaluateEnhancedEngagement } from './decision-engine.js';
 import { processFeedback as processUserFeedback, getEngagementInsights } from './learning-system.js';
 import { queueFromDecision, processPendingMessages } from './message-queue.js';
 import type {
@@ -11,8 +12,14 @@ import type {
   UserEngagementSettings,
   FeedbackInput,
   TriggerReason,
+  EnhancedUserState,
 } from './proactive.types.js';
-import type { EngagementDecisionResponse, EngagementPatternResponse, UpdatePreferencesInput } from './proactive.schemas.js';
+import type {
+  EngagementDecisionResponse,
+  EngagementPatternResponse,
+  UpdatePreferencesInput,
+  EnhancedEngagementDecisionResponse,
+} from './proactive.schemas.js';
 import type { FrequencyPreference } from '../../db/schema/proactive-engagements.js';
 
 async function buildUserState(userId: string): Promise<UserState> {
@@ -53,6 +60,53 @@ async function buildUserSettings(userId: string): Promise<UserEngagementSettings
     triggerPreferences: (pattern.triggerPreferences as Partial<Record<TriggerReason, boolean>>) ?? {},
     todayEngagementCount: todayCount,
   };
+}
+
+async function buildEnhancedUserState(userId: string): Promise<EnhancedUserState> {
+  const [activity, previousActivity, emotionalProfile] = await Promise.all([
+    activityService.getCurrentActivity(userId),
+    activityRepository.getPreviousActivity(userId),
+    emotionService.getUserEmotionalProfile(userId, 1),
+  ]);
+
+  let activityDurationMinutes = 0;
+  if (activity?.recordedAt) {
+    const now = new Date();
+    activityDurationMinutes = (now.getTime() - activity.recordedAt.getTime()) / (1000 * 60);
+  }
+
+  const dominantEmotion = emotionalProfile.dominantEmotions[0] ?? null;
+
+  return {
+    userId,
+    activityType: activity?.activityType ?? null,
+    focusScore: activity?.focusScore ?? 0,
+    interruptionCost: activity?.interruptionCost ?? null,
+    activityDurationMinutes,
+    emotionType: dominantEmotion,
+    emotionIntensity: emotionalProfile.averageIntensity,
+    lastActivityChangeAt: activity?.recordedAt ?? null,
+    activeFile: extractFileFromWindowTitle(activity?.windowTitle ?? null),
+    windowTitle: activity?.windowTitle ?? null,
+    previousActivity: previousActivity?.activityType ?? null,
+    previousFocusScore: previousActivity?.focusScore ?? 0,
+  };
+}
+
+function extractFileFromWindowTitle(windowTitle: string | null): string | null {
+  if (!windowTitle) return null;
+
+  const vscodeMatch = windowTitle.match(/^(.+?)\s*[-—]\s*.*?Visual Studio Code/i);
+  if (vscodeMatch?.[1]) {
+    return vscodeMatch[1].trim();
+  }
+
+  const ideMatch = windowTitle.match(/^(.+?\.(ts|js|tsx|jsx|py|go|rs|java|cpp|c|h))/i);
+  if (ideMatch?.[1]) {
+    return ideMatch[1].trim();
+  }
+
+  return null;
 }
 
 export async function evaluateAndEngage(userId: string): Promise<EngagementDecisionResponse> {
@@ -98,6 +152,64 @@ export async function evaluateAndEngage(userId: string): Promise<EngagementDecis
     suggestedMessage: decision.suggestedMessage,
     context: decision.context,
     engagementId,
+  };
+}
+
+export async function evaluateAndEngageEnhanced(
+  userId: string
+): Promise<EnhancedEngagementDecisionResponse> {
+  const [state, settings] = await Promise.all([
+    buildEnhancedUserState(userId),
+    buildUserSettings(userId),
+  ]);
+
+  const decision = evaluateEnhancedEngagement(state, settings);
+
+  let engagementId: string | undefined;
+
+  if (decision.timing === 'IMMEDIATE' && decision.reason && decision.suggestedMessage) {
+    const engagement = await proactiveRepository.createEngagement({
+      userId,
+      triggerReason: decision.reason,
+      triggerContext: decision.context,
+      messageContent: decision.suggestedMessage,
+      messagePriority: decision.priority,
+    });
+
+    engagementId = engagement.id;
+
+    await proactiveRepository.markEngagementDelivered(engagement.id);
+
+    await notificationService.createNotification({
+      userId,
+      type: 'proactive',
+      priority: decision.priority,
+      title: getNotificationTitle(decision.reason),
+      content: decision.suggestedMessage,
+    });
+  } else if (decision.timing === 'WAIT_FOR_BREAK' && decision.suggestedMessage) {
+    await queueFromDecision(
+      userId,
+      decision,
+      `Waiting for natural break (max ${decision.maxWaitMinutes} min)`
+    );
+  } else if (decision.timing === 'DEFER' && decision.deferUntil && decision.suggestedMessage) {
+    await queueFromDecision(userId, decision, 'Conversation value lower than interruption cost');
+  }
+
+  return {
+    shouldEngage: decision.shouldEngage,
+    reason: decision.reason,
+    action: decision.action,
+    deferUntil: decision.deferUntil?.toISOString(),
+    priority: decision.priority,
+    suggestedMessage: decision.suggestedMessage,
+    context: decision.context,
+    engagementId,
+    timing: decision.timing,
+    interruptionCost: decision.interruptionCost,
+    conversationValue: decision.conversationValue,
+    maxWaitMinutes: decision.maxWaitMinutes,
   };
 }
 
