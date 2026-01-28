@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, type KeyboardEvent } from "react"
 import { Mic, MicOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { RecordingState } from "@/hooks/useAudioRecorder"
@@ -17,6 +17,13 @@ const STATE_LABELS: Record<RecordingState, string> = {
   requesting: "권한 요청 중...",
   recording: "듣고 있어요...",
   processing: "처리 중...",
+}
+
+const ARIA_LABELS: Record<RecordingState, string> = {
+  idle: "녹음 시작. 스페이스바 또는 엔터 키를 눌러 녹음을 시작하세요",
+  requesting: "마이크 권한 요청 중",
+  recording: "녹음 중. 키를 놓으면 녹음이 중지됩니다",
+  processing: "음성 처리 중",
 }
 
 export function PushToTalkButton({
@@ -57,6 +64,29 @@ export function PushToTalkButton({
     [handleMouseUp]
   )
 
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault()
+        if (disabled || state !== "idle") return
+        onStart()
+      }
+    },
+    [disabled, state, onStart]
+  )
+
+  const handleKeyUp = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault()
+        if (state === "recording") {
+          onStop()
+        }
+      }
+    },
+    [state, onStop]
+  )
+
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       if (state === "recording") {
@@ -92,12 +122,18 @@ export function PushToTalkButton({
           onMouseLeave={handleMouseUp}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
+          onKeyDown={handleKeyDown}
+          onKeyUp={handleKeyUp}
           disabled={disabled || state === "processing" || state === "requesting"}
+          aria-label={ARIA_LABELS[state]}
+          aria-pressed={isRecording}
+          role="button"
+          tabIndex={0}
           className={cn(
             "relative flex h-20 w-20 items-center justify-center rounded-full transition-all",
             "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
             "disabled:cursor-not-allowed disabled:opacity-50",
-            isRecording ? "bg-red-500 text-white shadow-lg shadow-red-500/50" : "bg-primary text-primary-foreground",
+            isRecording ? "bg-chat-recording text-white shadow-lg shadow-red-500/50" : "bg-primary text-primary-foreground",
             !disabled && state === "idle" && "hover:bg-primary/90 active:scale-95"
           )}
         >

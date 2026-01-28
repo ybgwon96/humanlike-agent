@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, asc, and, sql } from 'drizzle-orm';
 import { db } from '../../config/database.js';
 import { messages, type Message, type NewMessage } from '../../db/schema/messages.js';
 import { env } from '../../config/env.js';
@@ -39,7 +39,7 @@ export async function getMessagesByConversationId(
       .select()
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(desc(messages.createdAt))
+      .orderBy(asc(messages.createdAt))
       .limit(limit)
       .offset(offset),
     db
