@@ -35,6 +35,8 @@ const voiceQuerySchema = z.object({
   language: z.enum(['ko', 'en']).default('ko'),
 });
 
+const VALID_MIME_TYPES = ['audio/webm', 'audio/ogg'];
+
 chatRoutes.post('/voice', zValidator('query', voiceQuerySchema), async (c) => {
   const query = c.req.valid('query');
   const body = await c.req.parseBody();
@@ -62,7 +64,7 @@ chatRoutes.post('/voice', zValidator('query', voiceQuerySchema), async (c) => {
         success: false,
         error: {
           code: 'INVALID_AUDIO_FORMAT',
-          message: `Invalid audio format. Supported formats: ${validMimeTypes.join(', ')}`,
+          message: `Invalid audio format. Supported formats: ${VALID_MIME_TYPES.join(', ')}`,
         },
       },
       400
