@@ -3,6 +3,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { MessageBubble } from "./MessageBubble"
 import { ChatInput } from "./ChatInput"
 import { TypingIndicator } from "./TypingIndicator"
+import { ToolApprovalRequest } from "./ToolApprovalRequest"
+import { ToolExecutionResult } from "./ToolExecutionResult"
 import { ErrorAlert } from "@/components/ui/ErrorAlert"
 import { useTextChat } from "@/hooks/useTextChat"
 import type { Message } from "@/lib/api"
@@ -20,7 +22,11 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
     isStreaming,
     streamingContent,
     error,
+    pendingApproval,
+    toolResults,
     sendMessage,
+    approveToolExecution,
+    rejectToolExecution,
     retry,
   } = useTextChat({ conversationId })
 
@@ -88,9 +94,22 @@ export function TextChatInterface({ conversationId }: TextChatInterfaceProps) {
                   isStreaming
                 />
               )}
+
+              {toolResults.map((result, index) => (
+                <ToolExecutionResult key={`tool-result-${index}`} result={result} />
+              ))}
+
+              {pendingApproval && (
+                <ToolApprovalRequest
+                  approval={pendingApproval}
+                  onApprove={approveToolExecution}
+                  onReject={rejectToolExecution}
+                  isProcessing={isStreaming}
+                />
+              )}
             </>
           )}
-          {isStreaming && !streamingContent && <TypingIndicator />}
+          {isStreaming && !streamingContent && !pendingApproval && <TypingIndicator />}
         </div>
       </ScrollArea>
 

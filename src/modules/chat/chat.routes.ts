@@ -6,6 +6,7 @@ import * as chatService from './chat.service.js';
 import {
   sendTextMessageSchema,
   streamChatSchema,
+  toolApprovalSchema,
   type TextMessageResponse,
   type VoiceMessageResponse,
 } from './chat.schemas.js';
@@ -99,6 +100,30 @@ chatRoutes.post('/stream', zValidator('json', streamChatSchema), async (c) => {
         conversationId: body.conversationId,
         content: body.content,
       })) {
+        await stream.writeSSE({
+          data: JSON.stringify(chunk),
+        });
+      }
+    } catch (error) {
+      await stream.writeSSE({
+        data: JSON.stringify({
+          type: 'error',
+          data: error instanceof Error ? error.message : 'Unknown error',
+        }),
+      });
+    }
+  });
+});
+
+chatRoutes.post('/tool-approval', zValidator('json', toolApprovalSchema), async (c) => {
+  const body = c.req.valid('json');
+
+  return streamSSE(c, async (stream) => {
+    try {
+      for await (const chunk of chatService.handleToolApproval(
+        body.approvalId,
+        body.approved
+      )) {
         await stream.writeSSE({
           data: JSON.stringify(chunk),
         });

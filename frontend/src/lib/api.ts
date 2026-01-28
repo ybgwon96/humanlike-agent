@@ -152,10 +152,27 @@ export async function createConversation(userId: string): Promise<Conversation> 
   return handleResponse<Conversation>(response)
 }
 
+export interface ToolApprovalData {
+  id: string
+  toolName: string
+  toolInput: Record<string, unknown>
+  riskLevel: number
+  reason: string
+}
+
+export interface ToolResultData {
+  toolName: string
+  success: boolean
+  output: unknown
+  error?: string
+}
+
 interface StreamChunk {
-  type: "content" | "done" | "error" | "message_saved"
+  type: "content" | "done" | "error" | "message_saved" | "tool_approval" | "tool_result"
   data: string
   messageId?: string
+  toolApproval?: ToolApprovalData
+  toolResult?: ToolResultData
 }
 
 export interface StreamCallbacks {
@@ -163,6 +180,8 @@ export interface StreamCallbacks {
   onComplete: (agentMessageId?: string) => void
   onError: (error: string) => void
   onUserMessageSaved?: (messageId: string) => void
+  onToolApproval?: (approval: ToolApprovalData) => void
+  onToolResult?: (result: ToolResultData) => void
 }
 
 export interface Notification {
@@ -266,6 +285,101 @@ export async function streamTextMessage(
                   break
                 case "message_saved":
                   callbacks.onUserMessageSaved?.(chunk.messageId || "")
+                  break
+                case "tool_approval":
+                  if (chunk.toolApproval) {
+                    callbacks.onToolApproval?.(chunk.toolApproval)
+                  }
+                  break
+                case "tool_result":
+                  if (chunk.toolResult) {
+                    callbacks.onToolResult?.(chunk.toolResult)
+                  }
+                  break
+              }
+            } catch {
+              // JSON parse 실패 무시
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    callbacks.onError(error instanceof Error ? error.message : "스트림 오류")
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+export interface ToolApprovalRequest {
+  conversationId: string
+  approvalId: string
+  approved: boolean
+}
+
+export async function streamToolApproval(
+  request: ToolApprovalRequest,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/chat/tool-approval`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Request failed" }))
+    callbacks.onError(error.error?.message || error.message || `HTTP ${response.status}`)
+    return
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) {
+    callbacks.onError("스트림을 읽을 수 없습니다")
+    return
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+
+      if (done) {
+        break
+      }
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr) {
+            try {
+              const chunk = JSON.parse(jsonStr) as StreamChunk
+
+              switch (chunk.type) {
+                case "content":
+                  callbacks.onChunk(chunk.data)
+                  break
+                case "done":
+                  callbacks.onComplete(chunk.messageId || "")
+                  break
+                case "error":
+                  callbacks.onError(chunk.data)
+                  break
+                case "tool_approval":
+                  if (chunk.toolApproval) {
+                    callbacks.onToolApproval?.(chunk.toolApproval)
+                  }
+                  break
+                case "tool_result":
+                  if (chunk.toolResult) {
+                    callbacks.onToolResult?.(chunk.toolResult)
+                  }
                   break
               }
             } catch {

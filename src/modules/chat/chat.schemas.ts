@@ -35,8 +35,33 @@ export const streamChatSchema = z.object({
 
 export type StreamChatRequest = z.infer<typeof streamChatSchema>;
 
+export interface ToolApprovalData {
+  id: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  riskLevel: number;
+  reason: string;
+}
+
+export interface ToolResultData {
+  toolName: string;
+  success: boolean;
+  output: unknown;
+  error?: string;
+}
+
 export interface StreamChunkResponse {
-  type: 'content' | 'done' | 'error' | 'message_saved';
+  type: 'content' | 'done' | 'error' | 'message_saved' | 'warning' | 'tool_approval' | 'tool_result';
   data: string;
   messageId?: string;
+  toolApproval?: ToolApprovalData;
+  toolResult?: ToolResultData;
 }
+
+export const toolApprovalSchema = z.object({
+  conversationId: z.string().uuid(),
+  approvalId: z.string(),
+  approved: z.boolean(),
+});
+
+export type ToolApprovalRequest = z.infer<typeof toolApprovalSchema>;

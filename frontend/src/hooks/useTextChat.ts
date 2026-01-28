@@ -1,6 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { fetchMessages, streamTextMessage, type Message, type StreamCallbacks } from "@/lib/api"
+import {
+  fetchMessages,
+  streamTextMessage,
+  streamToolApproval,
+  type Message,
+  type StreamCallbacks,
+  type ToolApprovalData,
+  type ToolResultData,
+} from "@/lib/api"
 
 export interface UseTextChatOptions {
   conversationId: string
@@ -13,7 +21,11 @@ export interface UseTextChatReturn {
   isStreaming: boolean
   streamingContent: string
   error: string | null
+  pendingApproval: ToolApprovalData | null
+  toolResults: ToolResultData[]
   sendMessage: (content: string) => Promise<void>
+  approveToolExecution: (approvalId: string) => Promise<void>
+  rejectToolExecution: (approvalId: string) => Promise<void>
   clearError: () => void
   retry: () => void
 }
@@ -26,6 +38,8 @@ export function useTextChat({
   const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
+  const [pendingApproval, setPendingApproval] = useState<ToolApprovalData | null>(null)
+  const [toolResults, setToolResults] = useState<ToolResultData[]>([])
   const abortRef = useRef(false)
 
   const { data: messages = [], isLoading } = useQuery({
@@ -40,6 +54,52 @@ export function useTextChat({
     }
   }, [])
 
+  const createCallbacks = useCallback((): StreamCallbacks => ({
+    onChunk: (chunk) => {
+      if (abortRef.current) return
+      setStreamingContent((prev) => prev + chunk)
+    },
+    onComplete: () => {
+      if (abortRef.current) return
+      setIsStreaming(false)
+      setStreamingContent("")
+
+      queryClient.setQueryData<Message[]>(
+        ["messages", conversationId],
+        (old = []) => old.filter((m) => !m.id.startsWith("temp-"))
+      )
+
+      queryClient.invalidateQueries({ queryKey: ["messages", conversationId] })
+    },
+    onError: (errorMessage) => {
+      setError(errorMessage)
+      setIsStreaming(false)
+      setStreamingContent("")
+      setPendingApproval(null)
+
+      queryClient.setQueryData<Message[]>(
+        ["messages", conversationId],
+        (old = []) => old.filter((m) => !m.id.startsWith("temp-"))
+      )
+    },
+    onUserMessageSaved: (messageId) => {
+      queryClient.setQueryData<Message[]>(
+        ["messages", conversationId],
+        (old = []) =>
+          old.map((m) => (m.id.startsWith("temp-") ? { ...m, id: messageId } : m))
+      )
+    },
+    onToolApproval: (approval) => {
+      if (abortRef.current) return
+      setPendingApproval(approval)
+      setIsStreaming(false)
+    },
+    onToolResult: (result) => {
+      if (abortRef.current) return
+      setToolResults((prev) => [...prev, result])
+    },
+  }), [conversationId, queryClient])
+
   const sendMessage = useCallback(
     async (content: string) => {
       if (!content.trim() || isStreaming) return
@@ -47,6 +107,7 @@ export function useTextChat({
       setError(null)
       setIsStreaming(true)
       setStreamingContent("")
+      setToolResults([])
       abortRef.current = false
 
       const optimisticMessage: Message = {
@@ -63,45 +124,41 @@ export function useTextChat({
         (old = []) => [...old, optimisticMessage]
       )
 
-      const callbacks: StreamCallbacks = {
-        onChunk: (chunk) => {
-          if (abortRef.current) return
-          setStreamingContent((prev) => prev + chunk)
-        },
-        onComplete: () => {
-          if (abortRef.current) return
-          setIsStreaming(false)
-          setStreamingContent("")
-
-          queryClient.setQueryData<Message[]>(
-            ["messages", conversationId],
-            (old = []) => old.filter((m) => !m.id.startsWith("temp-"))
-          )
-
-          queryClient.invalidateQueries({ queryKey: ["messages", conversationId] })
-        },
-        onError: (errorMessage) => {
-          setError(errorMessage)
-          setIsStreaming(false)
-          setStreamingContent("")
-
-          queryClient.setQueryData<Message[]>(
-            ["messages", conversationId],
-            (old = []) => old.filter((m) => !m.id.startsWith("temp-"))
-          )
-        },
-        onUserMessageSaved: (messageId) => {
-          queryClient.setQueryData<Message[]>(
-            ["messages", conversationId],
-            (old = []) =>
-              old.map((m) => (m.id.startsWith("temp-") ? { ...m, id: messageId } : m))
-          )
-        },
-      }
-
-      await streamTextMessage({ conversationId, content }, callbacks)
+      await streamTextMessage({ conversationId, content }, createCallbacks())
     },
-    [conversationId, isStreaming, queryClient]
+    [conversationId, isStreaming, queryClient, createCallbacks]
+  )
+
+  const approveToolExecution = useCallback(
+    async (approvalId: string) => {
+      if (isStreaming) return
+
+      setIsStreaming(true)
+      setPendingApproval(null)
+      abortRef.current = false
+
+      await streamToolApproval(
+        { conversationId, approvalId, approved: true },
+        createCallbacks()
+      )
+    },
+    [conversationId, isStreaming, createCallbacks]
+  )
+
+  const rejectToolExecution = useCallback(
+    async (approvalId: string) => {
+      if (isStreaming) return
+
+      setIsStreaming(true)
+      setPendingApproval(null)
+      abortRef.current = false
+
+      await streamToolApproval(
+        { conversationId, approvalId, approved: false },
+        createCallbacks()
+      )
+    },
+    [conversationId, isStreaming, createCallbacks]
   )
 
   const clearError = useCallback(() => {
@@ -119,7 +176,11 @@ export function useTextChat({
     isStreaming,
     streamingContent,
     error,
+    pendingApproval,
+    toolResults,
     sendMessage,
+    approveToolExecution,
+    rejectToolExecution,
     clearError,
     retry,
   }
