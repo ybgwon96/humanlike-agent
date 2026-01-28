@@ -27,7 +27,8 @@ function validateAudio(audioBuffer: Buffer, mimeType: string): void {
     throw new STTError('AUDIO_TOO_LARGE', `Audio file exceeds maximum size of 10MB`);
   }
 
-  if (!VALID_MIME_TYPES.includes(mimeType)) {
+  const isValidFormat = mimeType.startsWith('audio/webm') || mimeType.startsWith('audio/ogg');
+  if (!isValidFormat) {
     throw new STTError(
       'INVALID_AUDIO_FORMAT',
       `Invalid audio format. Supported formats: ${VALID_MIME_TYPES.join(', ')}`

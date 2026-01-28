@@ -54,9 +54,9 @@ chatRoutes.post('/voice', zValidator('query', voiceQuerySchema), async (c) => {
   }
 
   const mimeType = audioFile.type;
-  const validMimeTypes = ['audio/webm', 'audio/ogg'];
+  const isValidFormat = mimeType.startsWith('audio/webm') || mimeType.startsWith('audio/ogg');
 
-  if (!validMimeTypes.includes(mimeType)) {
+  if (!isValidFormat) {
     return c.json(
       {
         success: false,
